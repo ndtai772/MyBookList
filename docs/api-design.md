@@ -17,11 +17,11 @@ Resources:
 
 |  | Create | View | Update | Delete |
 | --- | --- | --- | --- | --- |
-| Account | Any | Any | Owner | Manager | Owner | Manager |
+| Account | Any | Any | Owner \| Manager | Owner \| Manager |
 | Book | Manager | Any | Manager | Manager |
 | Category | Manager | Any | Manager | Manager |
-| Comment | User | Any | Owner | Owner | Manager |
-| Feedback | User | Owner | Manager | Owner | Manager | Owner | Manager |
+| Comment | User | Any | Owner | Owner \| Manager |
+| Feedback | User | Owner \| Manager | Owner \| Manager | Owner \| Manager |
 | Rating | User | Any | - | Owner |
 | Bookmark | User | Owner | - | Owner |
 
