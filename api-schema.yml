@@ -4,18 +4,31 @@ info:
   version: "0.1.0"
 servers:
   - url: https://api.mybooklist.vn/v1
-tags:
-  - name: account
+security:
+  - OAuth2Scheme: [admin]
+
 components:
+  securitySchemes:
+    OAuth2Scheme:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.mybooklist.vn/v1/authorize
+          tokenUrl: https://auth.mybooklist.vn/v1/token
+          refreshUrl: https://auth.mybooklist.vn/v1/refreshed_token
+          scopes:
+            admin: admin
+            user: regular user
+            owner: resource owner
   parameters:
     limit:
       name: limit
       in: query
-      schema: { type: integer }
+      schema: { type: integer, minimum: 1, maximum: 100 }
     offset:
       name: offset
       in: query
-      schema: { type: integer }
+      schema: { type: integer, minimum: 0 }
   requestBodies:
     Login:
       required: true
@@ -82,21 +95,21 @@ components:
       required: true
       content:
         application/x-www-form-urlencoded:
-          schema: 
+          schema:
             properties:
-              content: {type: string}
+              content: { type: string }
     CreateRate:
       required: true
       content:
         application/x-www-form-urlencoded:
-          schema: 
+          schema:
             properties:
               score: { type: number, maximum: 5, minimum: 1 }
     UpdateRate:
       required: true
       content:
         application/x-www-form-urlencoded:
-          schema: 
+          schema:
             properties:
               score: { type: number, maximum: 5, minimum: 1 }
 
@@ -107,15 +120,21 @@ components:
         application/json:
           schema:
             properties:
-              code:
-                type: number
-              message:
-                type: string
+              code: { type: number }
+              message: { type: string }
+    InvalidRequestSchema:
+      description: Invalid request scheme
+      content:
+        application/json:
+          schema:
+            properties:
+              message: { type: string }
 
   schemas:
     username:
       type: string
       pattern: /[a-zA-Z1-9-_]{8,}/
+      maxLength: 255
     List:
       properties:
         limit: { type: integer }
@@ -127,6 +146,7 @@ components:
         username: { type: string }
         email: { type: string, format: email }
         avatar: { type: string, format: uri }
+        resource_uri: { type: string, format: uri }
         created_at: { type: integer, format: epoch }
     BookInfo:
       properties:
@@ -134,40 +154,61 @@ components:
         title: { type: string }
         author: { type: string }
         description: { type: string }
+        resource_uri: { type: string, format: uri }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/CategoryInfo" }
         created_at: { type: integer, format: epoch }
     CategoryInfo:
       properties:
         id: { type: integer, format: snowflakeId }
         name: { type: string }
         description: { type: string }
+        resource_uri: { type: string, format: uri }
         created_at: { type: integer, format: epoch }
     BookmarkInfo:
       properties:
         id: { type: integer, format: snowflakeId }
         book: { $ref: "#/components/schemas/BookInfo" }
+        resource_uri: { type: string, format: uri }
         created_at: { type: integer, format: epoch }
     FeedbackInfo:
       properties:
         id: { type: integer, format: snowflakeId }
         content: { type: string }
+        resource_uri: { type: string, format: uri }
         created_at: { type: integer, format: epoch }
     RateInfo:
       properties:
         id: { type: integer, format: snowflakeId }
         score: { type: number, maximum: 5, minimum: 1 }
+        resource_uri: { type: string, format: uri }
         created_at: { type: integer, format: epoch }
-
 
 paths:
   /login:
     post:
       tags: [auth]
       summary: log a user in
+      security: []
       requestBody: { $ref: "#/components/requestBodies/Login" }
       responses:
         204: { description: Login success }
         400: { $ref: "#/components/responses/BadRequest" }
-        422: { description: Invalid request body schema }
+        404: { description: NotFound }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
+
+  /accounts:
+    post:
+      summary: create new account
+      tags: [account]
+      security: []
+      requestBody: { $ref: "#/components/requestBodies/CreateAccount" }
+      responses:
+        204: { description: OK }
+        400: { $ref: "#/components/responses/BadRequest" }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
+
   /accounts/{id}:
     parameters:
       - name: id
@@ -179,6 +220,7 @@ paths:
     get:
       summary: view account info
       tags: [account]
+      security: []
       responses:
         200:
           description: OK
@@ -190,65 +232,39 @@ paths:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/AccountInfo" }
-        401: { description: Unauthorize }
-        403: { description: Forbidden }
         404: { description: NotFound }
     patch:
       summary: update account info
       tags: [account]
+      security: [OAuth2Scheme: [admin, owner]]
       requestBody: { $ref: "#/components/requestBodies/UpdateAccount" }
       responses:
         204: { description: OK }
         400: { $ref: "#/components/responses/BadRequest" }
-        422: { description: Invalid request body schema }
+        401: { description: Unauthorize }
+        403: { description: Forbidden }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
     delete:
-      summary: delete user account
+      summary: inactive user account
       tags: [account]
+      security: [OAuth2Scheme: [admin, owner]]
       responses:
         204: { description: OK }
+        401: { description: Unauthorize }
+        403: { description: Forbidden }
         404: { description: NotFound }
         400: { $ref: "#/components/responses/BadRequest" }
 
-  /accounts:
-    post:
-      summary: create new account
-      tags: [account]
-      requestBody: { $ref: "#/components/requestBodies/CreateAccount" }
-      responses:
-        204: { description: OK }
-        400: { $ref: "#/components/responses/BadRequest" }
-        422: { description: Invalid request body schema }
-  #TODO: redesign - is /accounts/{id} enough
-  /profile:
-    get:
-      summary: view personal profile
-      tags: [profile]
-      responses:
-        200:
-          description: Ok
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/AccountInfo" }
-        401: { description: Unauthorize }
-    patch:
-      summary: update personal info
-      tags: [profile]
-      requestBody: { $ref: "#/components/requestBodies/UpdateAccount" }
-      responses:
-        204: { description: Ok }
-        400: { $ref: "#/components/responses/BadRequest" }
-        401: { description: Unauthorize }
-        422: { description: Invalid request body schema }
-    delete:
-      summary: inactive personal account
-      tags: [profile]
-      responses:
-        204: { description: Ok }
-        401: { description: Unauthorize }
+  # /accounts/{id}/bookmarks:
+  # /accounts/{id}/rates:
+  # /accounts/{id}/comments:
+  # /accounts/{id}/feedback:
+
   /books:
     get:
       summary: list all books
       tags: [book]
+      security: []
       parameters:
         - name: author
           in: query
@@ -270,12 +286,13 @@ paths:
     post:
       summary: add a new book
       tags: [book]
+      security: [OAuth2Scheme: [admin]]
       requestBody: { $ref: "#/components/requestBodies/CreateBook" }
       responses:
         204: { description: Ok }
         400: { $ref: "#/components/responses/BadRequest" }
         401: { description: Unauthorize }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
   /books/{id}:
     parameters:
       - name: id
@@ -285,6 +302,7 @@ paths:
     get:
       summary: get a specific book info
       tags: [book]
+      security: []
       responses:
         200:
           description: OK
@@ -295,15 +313,17 @@ paths:
     patch:
       summary: update book info
       tags: [book]
+      security: [OAuth2Scheme: [admin]]
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
         404: { description: NotFound }
         403: { description: Forbidden }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
     delete:
       summary: delete a book
       tags: [book]
+      security: [OAuth2Scheme: [admin]]
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
@@ -319,7 +339,8 @@ paths:
           content:
             application/json:
               schema:
-                allOf: [$ref: "#/components/schemas/List"]
+                # Should we paginate categories response?
+                # allOf: [$ref: "#/components/schemas/List"]
                 properties:
                   data:
                     type: array
@@ -333,6 +354,7 @@ paths:
     put:
       summary: update category info
       tags: [category]
+      security: [OAuth2Scheme: [admin]]
       requestBody: { $ref: "#/components/requestBodies/UpdateCategory" }
       responses:
         204: { description: Ok }
@@ -340,10 +362,11 @@ paths:
         401: { description: Unauthorize }
         404: { description: NotFound }
         403: { description: Forbidden }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
     delete:
       summary: delete a category
       tags: [category]
+      security: [OAuth2Scheme: [admin]]
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
@@ -354,6 +377,7 @@ paths:
     get:
       summary: list all personal bookmarks
       tags: [bookmark]
+      security: [OAuth2Scheme: [owner]]
       responses:
         200:
           description: Ok
@@ -369,12 +393,13 @@ paths:
     post:
       summary: add a new book to personal bookmark list
       tags: [bookmark]
+      security: [OAuth2Scheme: [user]]
       requestBody: { $ref: "#/components/requestBodies/CreateBookmark" }
       responses:
         204: { description: OK }
         400: { $ref: "#/components/responses/BadRequest" }
         401: { description: Unauthorize }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
   /bookmarks/{id}:
     parameters:
       - name: id
@@ -384,6 +409,7 @@ paths:
     get:
       summary: get a bookmark item info
       tags: [bookmark]
+      security: [OAuth2Scheme: [owner]]
       responses:
         200:
           description: Ok
@@ -396,6 +422,7 @@ paths:
     delete:
       summary: remove a specific bookmark
       tags: [bookmark]
+      security: [OAuth2Scheme: [owner]]
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
@@ -404,8 +431,9 @@ paths:
   #TODO: redesign - should it be /feedback?account_id=$
   /feedbacks:
     get:
-      summary: list all from user feedbacks
+      summary: list all feedbacks from users
       tags: [feedback]
+      security: [OAuth2Scheme: [admin]]
       responses:
         200:
           description: Ok
@@ -419,14 +447,15 @@ paths:
                     items: { $ref: "#/components/schemas/FeedbackInfo" }
         401: { description: Unauthorize }
     post:
-      summary: add a new book to personal bookmark list
+      summary: create a new feedback
       tags: [feedback]
+      security: [OAuth2Scheme: [user]]
       requestBody: { $ref: "#/components/requestBodies/CreateFeedback" }
       responses:
         204: { description: OK }
         400: { $ref: "#/components/responses/BadRequest" }
         401: { description: Unauthorize }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
   /feedbacks/{id}:
     parameters:
       - name: id
@@ -436,6 +465,7 @@ paths:
     get:
       summary: get a specific feedback info
       tags: [feedback]
+      security: [OAuth2Scheme: [owner, admin]]
       responses:
         200:
           description: Ok
@@ -448,16 +478,18 @@ paths:
     patch:
       summary: update a specific feedback
       tags: [feedback]
+      security: [OAuth2Scheme: [admin, owner]]
       requestBody: { $ref: "#/components/requestBodies/UpdateFeedback" }
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
         403: { description: Forbidden }
         404: { description: NotFound }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
     delete:
       summary: remove a specific feedback
       tags: [feedback]
+      security: [OAuth2Scheme: [admin, owner]]
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
@@ -467,7 +499,7 @@ paths:
   #TODO: redesign - should it be /bookmarks?account_id=$
   /rates:
     get:
-      summary: list all personal ratings
+      summary: list all ratings
       tags: [rate]
       responses:
         200:
@@ -484,12 +516,13 @@ paths:
     post:
       summary: add a rating to a book
       tags: [rate]
+      security: [OAuth2Scheme: [user]]
       requestBody: { $ref: "#/components/requestBodies/CreateRate" }
       responses:
         204: { description: OK }
         400: { $ref: "#/components/responses/BadRequest" }
         401: { description: Unauthorize }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
   /rates/{id}:
     parameters:
       - name: id
@@ -497,8 +530,8 @@ paths:
         schema: { type: integer }
         required: true
     get:
-      summary: get a specific feedback info
-      tags: [feedback]
+      summary: get a specific rate info
+      tags: [rate]
       responses:
         200:
           description: Ok
@@ -510,17 +543,18 @@ paths:
         404: { description: NotFound }
     patch:
       summary: update a specific rating
-      tags: [feedback]
+      tags: [rate]
+      security: [OAuth2Scheme: [owner]]
       requestBody: { $ref: "#/components/requestBodies/UpdateRate" }
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
         403: { description: Forbidden }
         404: { description: NotFound }
-        422: { description: Invalid request body schema }
+        422: { $ref: "#/components/responses/InvalidRequestSchema" }
     delete:
       summary: remove a specific rating
-      tags: [feedback]
+      tags: [rate]
       responses:
         204: { description: OK }
         401: { description: Unauthorize }
