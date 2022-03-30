@@ -484,6 +484,7 @@ paths:
     get:
       summary: List categories
       tags: [Category]
+      security: []
       responses:
         200:
           description: Ok
