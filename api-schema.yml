@@ -70,11 +70,15 @@ components:
       content:
         multipart/form-data:
           schema:
+            required: [title, author, description, cover, categories]
             properties:
               title: { type: string }
               author: { type: string }
               description: { type: string }
               cover: { format: blob }
+              categories:
+                type: array
+                items: { type: string }
     CategoryUpdate:
       required: true
       content:
@@ -89,6 +93,7 @@ components:
       content:
         application/x-www-form-urlencoded:
           schema:
+            required: [book_id]
             properties:
               book_id: { type: integer, format: snowflakeId }
     FeedbackCreate:
@@ -96,6 +101,7 @@ components:
       content:
         application/x-www-form-urlencoded:
           schema:
+            required: [content]
             properties:
               content: { type: string }
     FeedbackUpdate:
@@ -103,13 +109,17 @@ components:
       content:
         application/x-www-form-urlencoded:
           schema:
+            minProperties: 1
             properties:
               content: { type: string }
+              feedback_status: { enum: [processing, resolved, not_resolved] }
+              message: { type: string }
     RateCreate:
       required: true
       content:
         application/x-www-form-urlencoded:
           schema:
+            required: [score]
             properties:
               score: { type: integer, maximum: 10, minimum: 1 }
     RateUpdate:
@@ -117,6 +127,7 @@ components:
       content:
         application/x-www-form-urlencoded:
           schema:
+            required: [score]
             properties:
               score: { type: integer, maximum: 10, minimum: 1 }
     CommentCreate:
@@ -124,14 +135,16 @@ components:
       content:
         application/x-www-form-urlencoded:
           schema:
+            required: [book_id, content]
             properties:
-              thread_id: { type: integer, format: snowflakeId }
+              book_id: { type: integer, format: snowflakeId }
               content: { type: string }
     CommentUpdate:
       required: true
       content:
         application/x-www-form-urlencoded:
           schema:
+            required: [content]
             properties:
               content: { type: string }
 
@@ -196,7 +209,7 @@ components:
         created_at: { type: integer, format: epoch }
     CategoryInfo:
       properties:
-        id: { type: integer, format: snowflakeId }
+        id: { type: integer }
         name: { type: string }
         description: { type: string }
         resource_uri: { type: string, format: uri }
@@ -213,6 +226,8 @@ components:
         id: { type: integer, format: snowflakeId }
         content: { type: string }
         resource_uri: { type: string, format: uri }
+        feedback_status: { enum: [processing, resolved, not_resolved] }
+        message: { type: string }
         created_by: { $ref: "#/components/schemas/AccountBrief" }
         modified_at: { type: integer, format: epoch }
         created_at: { type: integer, format: epoch }
@@ -227,8 +242,9 @@ components:
     CommentInfo:
       properties:
         id: { type: integer, format: snowflakeId }
-        thread_id: { type: integer, format: snowflakeId }
+        book_id: { type: integer, format: snowflakeId }
         resource_uri: { type: string, format: uri }
+        content: { type: string }
         created_by: { $ref: "#/components/schemas/AccountBrief" }
         modified_at: { type: integer, format: epoch }
         created_at: { type: integer, format: epoch }
@@ -298,6 +314,8 @@ paths:
           in: query
           schema: { type: string }
           required: false
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         200:
           description: OK
@@ -315,9 +333,7 @@ paths:
     parameters:
       - name: id
         in: path
-        schema:
-          type: string
-          format: uuid
+        schema: { type: integer, format: snowflakeId }
         required: true
     get:
       summary: View account
@@ -352,15 +368,17 @@ paths:
         404: { description: NotFound }
         400: { $ref: "#/components/responses/BadRequest" }
 
-  /books:
+  /accounts/{id}/feedbacks:
+    parameters:
+      - name: id
+        in: path
+        schema: { type: integer, format: snowflakeId }
+        required: true
     get:
-      summary: Search books
-      tags: [Book]
-      security: []
-      parameters:
-        - name: q
-          in: query
-          schema: { type: string }
+      summary: List personal feedbacks
+      tags: [Feedback]
+      security: [Role: [admin]]
+      parameters: [$ref: "#/components/parameters/account_id"]
       responses:
         200:
           description: Ok
@@ -371,7 +389,10 @@ paths:
                 properties:
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/BookInfo" }
+                    items: { $ref: "#/components/schemas/FeedbackInfo" }
+        401: { description: Unauthorize }
+
+  /books:
     post:
       summary: Add book
       tags: [Book]
@@ -419,6 +440,40 @@ paths:
         401: { description: Unauthorize }
         404: { description: NotFound }
         403: { description: Forbidden }
+
+  /books/search:
+    get:
+      summary: Search books
+      tags: [Book]
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: |
+            search query, results will match any book that contain the search query in it info (title, author, description, etc)
+          required: false
+        - name: category_id
+          in: query
+          schema: { type: integer }
+          required: false
+        - name: order_by
+          in: query
+          schema: { type: string }
+          required: false
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        200:
+          description: Ok
+          content:
+            application/json:
+              schema:
+                allOf: [$ref: "#/components/schemas/list"]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookInfo" }
 
   /categories:
     get:
@@ -526,10 +581,9 @@ paths:
 
   /feedbacks:
     get:
-      summary: List personal feedbacks
+      summary: List feedbacks
       tags: [Feedback]
       security: [Role: [admin]]
-      parameters: [$ref: "#/components/parameters/account_id"]
       responses:
         200:
           description: Ok
@@ -542,6 +596,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/FeedbackInfo" }
         401: { description: Unauthorize }
+        403: { description: Forbidden }
     post:
       summary: Create feedback
       tags: [Feedback]
@@ -666,8 +721,9 @@ paths:
       tags: [Comment]
       security: [Role: [owner]]
       parameters:
-        - required: false
-          $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         200:
           description: Ok
