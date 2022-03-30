@@ -204,9 +204,14 @@ components:
         num_of_comments: { type: integer }
         categories:
           type: array
-          items: { $ref: "#/components/schemas/CategoryInfo" }
+          items: { $ref: "#/components/schemas/CategoryBrief" }
         modified_at: { type: integer, format: epoch }
         created_at: { type: integer, format: epoch }
+    CategoryBrief:
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        resource_uri: { type: string, format: uri }
     CategoryInfo:
       properties:
         id: { type: integer }
