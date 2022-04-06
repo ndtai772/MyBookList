@@ -2,3 +2,4 @@
 	path = backend
 	url = https://github.com/ndtai772/MyBookListBackend.git
 	branch = main
+	ignore = dirty
