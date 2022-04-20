@@ -3,3 +3,9 @@
 	url = https://github.com/ndtai772/MyBookListBackend.git
 	branch = main
 	ignore = dirty
+
+[submodule "app"]
+	path = app
+	url = https://github.com/ducminh512/BookAppReview.git
+	branch = main
+	ignore = dirty
